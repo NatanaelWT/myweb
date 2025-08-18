@@ -733,6 +733,10 @@ function layout_header($title) {
     .filter-inline input,.filter-inline select{width:100%}
   }
 
+  .chart-row{display:flex;flex-wrap:wrap;gap:16px}
+  .chart-row .card{flex:1 1 300px}
+  @media(max-width:600px){.chart-row{flex-direction:column}}
+
   /* Tabel responsive via wrapper */
   .table-wrap{width:100%;overflow-x:auto}
   table{width:100%;border-collapse:collapse;min-width:720px}
@@ -870,28 +874,52 @@ if ($action==='analysis') {
     $counts[$st]++;
   }
 
-  // summary counts for KTB, leaders, and members
-  $ktbCount    = 0;
+  $ktbCount = 0;
   foreach ($ktb as $k) {
     if ($campus_id && (($k['campus_id'] ?? '') !== $campus_id)) continue;
     $ktbCount++;
   }
-  $leaderCount = 0;
-  $memberCount = 0;
+  $uniqueUsers = [];
+  $uniqueLeaders = [];
   foreach ($memberships as $m) {
     $kt = $ktbMap[$m['ktb_id']] ?? null;
     if (!$kt) continue;
     if ($campus_id && (($kt['campus_id'] ?? '') !== $campus_id)) continue;
     $u = $userMap[strtolower($m['username'])] ?? null;
     if ($angkatan && (!$u || ($u['angkatan'] ?? '') !== $angkatan)) continue;
-    if (($m['role'] ?? '') === 'leader') $leaderCount++; else $memberCount++;
+    $un = strtolower($m['username']);
+    $uniqueUsers[$un] = true;
+    if (($m['role'] ?? '') === 'leader') $uniqueLeaders[$un] = true;
+  }
+  $leaderCount = count($uniqueLeaders);
+  $memberCount = max(0, count($uniqueUsers) - $leaderCount);
+
+  // meeting counts per KTB for pie chart
+  $meetingCounts = [];
+  foreach ($meetings as $m) {
+    if ($start && ($m['date'] ?? '') < $start) continue;
+    if ($end && ($m['date'] ?? '') > $end) continue;
+    $kt = $ktbMap[$m['ktb_id']] ?? null;
+    if (!$kt) continue;
+    if ($campus_id && (($kt['campus_id'] ?? '') !== $campus_id)) continue;
+    if ($angkatan) {
+      $has = false;
+      foreach ($memberships as $mem) {
+        if ($mem['ktb_id'] != $m['ktb_id']) continue;
+        $u = $userMap[strtolower($mem['username'])] ?? null;
+        if ($u && ($u['angkatan'] ?? '') === $angkatan) { $has = true; break; }
+      }
+      if (!$has) continue;
+    }
+    $name = $kt['name'] ?? ('KTB '.$m['ktb_id']);
+    if (!isset($meetingCounts[$name])) $meetingCounts[$name] = 0;
+    $meetingCounts[$name]++;
   }
 
   // Filter form
   echo '<div class="card"><h3>Filter</h3><form method="get" action="" class="filter-inline">';
   echo '<input type="hidden" name="action" value="analysis">';
   echo '<div><label>Kampus</label><select name="campus_id"><option value="">-- Semua --</option>';
-  
   foreach ($campuses as $c) {
     $sel = $campus_id === ($c['id'] ?? '') ? 'selected' : '';
     echo '<option value="'.e($c['id']).'" '.$sel.'>'.e($c['name']).'</option>';
@@ -910,6 +938,7 @@ if ($action==='analysis') {
 
   echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
 
+  echo '<div class="chart-row">';
   echo '<div class="card"><h3>Statistik KTB</h3>';
   $total = array_sum($counts);
   $sumAll = $ktbCount + $leaderCount + $memberCount + $total;
@@ -927,17 +956,23 @@ if ($action==='analysis') {
   }
   echo '</div>';
 
-  echo '<div class="card"><h3>Ringkasan Kehadiran</h3>';
-  if ($total === 0) {
+  echo '<div class="card"><h3>Ringkasan Pertemuan</h3>';
+  if (!$meetingCounts) {
     echo '<div class="muted">Belum ada data untuk filter ini.</div>';
   } else {
-    echo '<canvas id="chartAttendance" width="400" height="300"></canvas>';
+    $labels = array_map('e', array_keys($meetingCounts));
+    $dataVals = array_values($meetingCounts);
+    $colors = [];
+    $countLabels = count($labels);
+    for ($i=0;$i<$countLabels;$i++) $colors[] = 'hsl('.(360*$i/$countLabels).',70%,60%)';
+    echo '<canvas id="chartMeeting" width="400" height="300"></canvas>';
     echo '<ul>';
-    foreach ($counts as $k=>$v) echo '<li>'.e(ucfirst($k)).': '.e($v).'</li>';
+    foreach ($meetingCounts as $k=>$v) echo '<li>'.e($k).': '.e($v).'</li>';
     echo '</ul>';
-    echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
-    echo '<script>const ctx=document.getElementById("chartAttendance").getContext("2d");new Chart(ctx,{type:"pie",data:{labels:["Hadir","Izin","Alpha"],datasets:[{data:['.$counts['hadir'].','.$counts['izin'].','.$counts['alpha'].'],backgroundColor:["#4caf50","#ff9800","#f44336"]}]}});</script>';
+    echo '<script>const ctxM=document.getElementById("chartMeeting").getContext("2d");new Chart(ctxM,{type:"pie",data:{labels:["'.implode('","',$labels).'"],datasets:[{data:['.implode(',', $dataVals).'],backgroundColor:["'.implode('","',$colors).'"]}]}});</script>';
   }
+  echo '</div>';
+
   echo '</div>';
 
   layout_footer(); exit;
