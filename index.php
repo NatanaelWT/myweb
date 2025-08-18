@@ -891,6 +891,7 @@ if ($action==='analysis') {
   echo '<div class="card"><h3>Filter</h3><form method="get" action="" class="filter-inline">';
   echo '<input type="hidden" name="action" value="analysis">';
   echo '<div><label>Kampus</label><select name="campus_id"><option value="">-- Semua --</option>';
+  
   foreach ($campuses as $c) {
     $sel = $campus_id === ($c['id'] ?? '') ? 'selected' : '';
     echo '<option value="'.e($c['id']).'" '.$sel.'>'.e($c['name']).'</option>';
@@ -934,6 +935,7 @@ if ($action==='analysis') {
     echo '<ul>';
     foreach ($counts as $k=>$v) echo '<li>'.e(ucfirst($k)).': '.e($v).'</li>';
     echo '</ul>';
+    echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
     echo '<script>const ctx=document.getElementById("chartAttendance").getContext("2d");new Chart(ctx,{type:"pie",data:{labels:["Hadir","Izin","Alpha"],datasets:[{data:['.$counts['hadir'].','.$counts['izin'].','.$counts['alpha'].'],backgroundColor:["#4caf50","#ff9800","#f44336"]}]}});</script>';
   }
   echo '</div>';
