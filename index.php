@@ -751,6 +751,7 @@ function layout_header($title) {
     if (is_admin()) {
       echo '<a href="?action=campuses" title="Kampus/Unit">Kampus</a>';
       echo '<a href="?action=users" title="Pengguna">Users</a>';
+      echo '<a href="?action=analysis" title="Analisis Data">Analisis</a>';
     }
     echo '<a href="?action=ktb" title="Kelola KTB">KTB</a>';
     echo '<a href="?action=my" title="Profil Saya">Saya</a>';
@@ -816,6 +817,84 @@ if ($action==='dashboard') {
 }
 function card_stat($label,$value){
   return '<div class="card"><div class="muted">'.$label.'</div><div style="font-size:2rem;font-weight:800">'.e($value).'</div></div>';
+}
+
+// ANALYSIS (admin)
+if ($action==='analysis') {
+  if (!is_admin()) { header('Location:?action=dashboard'); exit; }
+
+  layout_header('Analisis Data');
+
+  // filters
+  $campus_id = $_GET['campus_id'] ?? '';
+  $angkatan  = $_GET['angkatan'] ?? '';
+  $start     = $_GET['start'] ?? '';
+  $end       = $_GET['end'] ?? '';
+
+  $campuses = db_read('campuses');
+  $users    = db_read('users');
+  $meetings = db_read('meetings');
+  $ktb      = db_read('ktb_groups');
+  $att      = db_read('attendance');
+
+  // maps for quick lookup
+  $meetingMap = []; foreach ($meetings as $m) $meetingMap[$m['id']] = $m;
+  $ktbMap     = []; foreach ($ktb as $k) $ktbMap[$k['id']] = $k;
+  $userMap    = []; foreach ($users as $u) $userMap[strtolower($u['username'])] = $u;
+
+  $angkatanOpts = array_unique(array_filter(array_map(fn($u)=>$u['angkatan'] ?? '', $users)));
+  sort($angkatanOpts);
+
+  $counts = ['hadir'=>0,'izin'=>0,'alpha'=>0];
+  foreach ($att as $a) {
+    $meeting = $meetingMap[$a['meeting_id']] ?? null;
+    if (!$meeting) continue;
+    if ($start && $meeting['date'] < $start) continue;
+    if ($end && $meeting['date'] > $end) continue;
+    $kt = $ktbMap[$meeting['ktb_id']] ?? null;
+    if ($campus_id && (!$kt || ($kt['campus_id'] ?? '') !== $campus_id)) continue;
+    $user = $userMap[strtolower($a['username'])] ?? null;
+    if ($angkatan && (!$user || ($user['angkatan'] ?? '') !== $angkatan)) continue;
+    $st = $a['status'] ?? 'hadir';
+    if (!isset($counts[$st])) $counts[$st] = 0;
+    $counts[$st]++;
+  }
+
+  // Filter form
+  echo '<div class="card"><h3>Filter</h3><form method="get" action="">';
+  echo '<input type="hidden" name="action" value="analysis">';
+  echo '<label>Kampus</label><select name="campus_id"><option value="">-- Semua --</option>';
+  foreach ($campuses as $c) {
+    $sel = $campus_id === ($c['id'] ?? '') ? 'selected' : '';
+    echo '<option value="'.e($c['id']).'" '.$sel.'>'.e($c['name']).'</option>';
+  }
+  echo '</select>';
+  echo '<label>Angkatan</label><select name="angkatan"><option value="">-- Semua --</option>';
+  foreach ($angkatanOpts as $ang) {
+    $sel = $angkatan === $ang ? 'selected' : '';
+    echo '<option value="'.e($ang).'" '.$sel.'>'.e($ang).'</option>';
+  }
+  echo '</select>';
+  echo '<label>Dari Tanggal</label><input type="date" name="start" value="'.e($start).'">';
+  echo '<label>Sampai Tanggal</label><input type="date" name="end" value="'.e($end).'">';
+  echo '<div class="mt8"><button class="btn-icon" title="Terapkan">Terapkan</button></div>';
+  echo '</form></div>';
+
+  echo '<div class="card"><h3>Ringkasan Kehadiran</h3>';
+  $total = array_sum($counts);
+  if ($total === 0) {
+    echo '<div class="muted">Belum ada data untuk filter ini.</div>';
+  } else {
+    echo '<canvas id="chartAttendance" width="400" height="300"></canvas>';
+    echo '<ul>';
+    foreach ($counts as $k=>$v) echo '<li>'.e(ucfirst($k)).': '.e($v).'</li>';
+    echo '</ul>';
+    echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
+    echo '<script>const ctx=document.getElementById("chartAttendance").getContext("2d");new Chart(ctx,{type:"pie",data:{labels:["Hadir","Izin","Alpha"],datasets:[{data:['.$counts['hadir'].','.$counts['izin'].','.$counts['alpha'].'],backgroundColor:["#4caf50","#ff9800","#f44336"]}]}});</script>';
+  }
+  echo '</div>';
+
+  layout_footer(); exit;
 }
 
 // CAMPUSES (admin)
