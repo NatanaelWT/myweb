@@ -724,6 +724,15 @@ function layout_header($title) {
   .status-cancelled{color:#ff5d6c}
   img.thumb{max-width:120px;border-radius:8px;border:1px solid #2a3b76}
 
+  .filter-inline{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  .filter-inline div{flex:0 0 auto}
+  .filter-inline input,.filter-inline select{width:auto}
+  @media(max-width:600px){
+    .filter-inline{flex-direction:column}
+    .filter-inline div{width:100%}
+    .filter-inline input,.filter-inline select{width:100%}
+  }
+
   /* Tabel responsive via wrapper */
   .table-wrap{width:100%;overflow-x:auto}
   table{width:100%;border-collapse:collapse;min-width:720px}
@@ -751,6 +760,7 @@ function layout_header($title) {
     if (is_admin()) {
       echo '<a href="?action=campuses" title="Kampus/Unit">Kampus</a>';
       echo '<a href="?action=users" title="Pengguna">Users</a>';
+      echo '<a href="?action=analysis" title="Analisis Data">Analisis</a>';
     }
     echo '<a href="?action=ktb" title="Kelola KTB">KTB</a>';
     echo '<a href="?action=my" title="Profil Saya">Saya</a>';
@@ -816,6 +826,119 @@ if ($action==='dashboard') {
 }
 function card_stat($label,$value){
   return '<div class="card"><div class="muted">'.$label.'</div><div style="font-size:2rem;font-weight:800">'.e($value).'</div></div>';
+}
+
+// ANALYSIS (admin)
+if ($action==='analysis') {
+  if (!is_admin()) { header('Location:?action=dashboard'); exit; }
+
+  layout_header('Analisis Data');
+
+  // filters
+  $campus_id = $_GET['campus_id'] ?? '';
+  $angkatan  = $_GET['angkatan'] ?? '';
+  $start     = $_GET['start'] ?? '';
+  $end       = $_GET['end'] ?? '';
+
+  $campuses = db_read('campuses');
+  $users    = db_read('users');
+  $meetings     = db_read('meetings');
+  $ktb          = db_read('ktb_groups');
+  $att          = db_read('attendance');
+  $memberships  = db_read('memberships');
+
+  // maps for quick lookup
+  $meetingMap = []; foreach ($meetings as $m) $meetingMap[$m['id']] = $m;
+  $ktbMap     = []; foreach ($ktb as $k) $ktbMap[$k['id']] = $k;
+  $userMap    = []; foreach ($users as $u) $userMap[strtolower($u['username'])] = $u;
+
+  $angkatanOpts = array_unique(array_filter(array_map(fn($u)=>$u['angkatan'] ?? '', $users)));
+  sort($angkatanOpts);
+
+  $counts = ['hadir'=>0,'izin'=>0,'alpha'=>0];
+  foreach ($att as $a) {
+    $meeting = $meetingMap[$a['meeting_id']] ?? null;
+    if (!$meeting) continue;
+    if ($start && $meeting['date'] < $start) continue;
+    if ($end && $meeting['date'] > $end) continue;
+    $kt = $ktbMap[$meeting['ktb_id']] ?? null;
+    if ($campus_id && (!$kt || ($kt['campus_id'] ?? '') !== $campus_id)) continue;
+    $user = $userMap[strtolower($a['username'])] ?? null;
+    if ($angkatan && (!$user || ($user['angkatan'] ?? '') !== $angkatan)) continue;
+    $st = $a['status'] ?? 'hadir';
+    if (!isset($counts[$st])) $counts[$st] = 0;
+    $counts[$st]++;
+  }
+
+  // summary counts for KTB, leaders, and members
+  $ktbCount    = 0;
+  foreach ($ktb as $k) {
+    if ($campus_id && (($k['campus_id'] ?? '') !== $campus_id)) continue;
+    $ktbCount++;
+  }
+  $leaderCount = 0;
+  $memberCount = 0;
+  foreach ($memberships as $m) {
+    $kt = $ktbMap[$m['ktb_id']] ?? null;
+    if (!$kt) continue;
+    if ($campus_id && (($kt['campus_id'] ?? '') !== $campus_id)) continue;
+    $u = $userMap[strtolower($m['username'])] ?? null;
+    if ($angkatan && (!$u || ($u['angkatan'] ?? '') !== $angkatan)) continue;
+    if (($m['role'] ?? '') === 'leader') $leaderCount++; else $memberCount++;
+  }
+
+  // Filter form
+  echo '<div class="card"><h3>Filter</h3><form method="get" action="" class="filter-inline">';
+  echo '<input type="hidden" name="action" value="analysis">';
+  echo '<div><label>Kampus</label><select name="campus_id"><option value="">-- Semua --</option>';
+  foreach ($campuses as $c) {
+    $sel = $campus_id === ($c['id'] ?? '') ? 'selected' : '';
+    echo '<option value="'.e($c['id']).'" '.$sel.'>'.e($c['name']).'</option>';
+  }
+  echo '</select></div>';
+  echo '<div><label>Angkatan</label><select name="angkatan"><option value="">-- Semua --</option>';
+  foreach ($angkatanOpts as $ang) {
+    $sel = $angkatan === $ang ? 'selected' : '';
+    echo '<option value="'.e($ang).'" '.$sel.'>'.e($ang).'</option>';
+  }
+  echo '</select></div>';
+  echo '<div><label>Dari Tanggal</label><input type="date" name="start" value="'.e($start).'"></div>';
+  echo '<div><label>Sampai Tanggal</label><input type="date" name="end" value="'.e($end).'"></div>';
+  echo '<div class="mt8"><button class="btn-icon" title="Terapkan">Terapkan</button></div>';
+  echo '</form></div>';
+
+  echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
+
+  echo '<div class="card"><h3>Statistik KTB</h3>';
+  $total = array_sum($counts);
+  $sumAll = $ktbCount + $leaderCount + $memberCount + $total;
+  if ($sumAll === 0) {
+    echo '<div class="muted">Belum ada data untuk filter ini.</div>';
+  } else {
+    echo '<canvas id="chartKTB" width="400" height="300"></canvas>';
+    echo '<ul>';
+    echo '<li>Jumlah KTB: '.e($ktbCount).'</li>';
+    echo '<li>Jumlah Pemimpin: '.e($leaderCount).'</li>';
+    echo '<li>Jumlah Adek: '.e($memberCount).'</li>';
+    echo '<li>Jumlah Kehadiran: '.e($total).'</li>';
+    echo '</ul>';
+    echo '<script>const ctxK=document.getElementById("chartKTB").getContext("2d");new Chart(ctxK,{type:"bar",data:{labels:["KTB","Pemimpin","Adek","Kehadiran"],datasets:[{data:['.$ktbCount.','.$leaderCount.','.$memberCount.','.$total.'],backgroundColor:["#2196f3","#9c27b0","#ffc107","#4caf50"]}]},options:{plugins:{legend:{display:false}}}});</script>';
+  }
+  echo '</div>';
+
+  echo '<div class="card"><h3>Ringkasan Kehadiran</h3>';
+  if ($total === 0) {
+    echo '<div class="muted">Belum ada data untuk filter ini.</div>';
+  } else {
+    echo '<canvas id="chartAttendance" width="400" height="300"></canvas>';
+    echo '<ul>';
+    foreach ($counts as $k=>$v) echo '<li>'.e(ucfirst($k)).': '.e($v).'</li>';
+    echo '</ul>';
+    echo '<script>const ctx=document.getElementById("chartAttendance").getContext("2d");new Chart(ctx,{type:"pie",data:{labels:["Hadir","Izin","Alpha"],datasets:[{data:['.$counts['hadir'].','.$counts['izin'].','.$counts['alpha'].'],backgroundColor:["#4caf50","#ff9800","#f44336"]}]}});</script>';
+  }
+  echo '</div>';
+
+  layout_footer(); exit;
 }
 
 // CAMPUSES (admin)
