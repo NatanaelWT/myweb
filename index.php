@@ -874,7 +874,6 @@ if ($action==='analysis') {
     $counts[$st]++;
   }
 
-  // summary counts for KTB, unique leaders, and members
   $ktbCount = 0;
   foreach ($ktb as $k) {
     if ($campus_id && (($k['campus_id'] ?? '') !== $campus_id)) continue;
@@ -940,7 +939,6 @@ if ($action==='analysis') {
   echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
 
   echo '<div class="chart-row">';
-
   echo '<div class="card"><h3>Statistik KTB</h3>';
   $total = array_sum($counts);
   $sumAll = $ktbCount + $leaderCount + $memberCount + $total;
