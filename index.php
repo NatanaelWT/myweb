@@ -996,7 +996,7 @@ if ($action==='analysis') {
     echo '<li>Jumlah Adek: '.e($memberCount).'</li>';
     echo '<li>Jumlah Pertemuan: '.e($meetingTotal).'</li>';
     echo '</ul>';
-    echo '<script>const ctxK=document.getElementById("chartKTB").getContext("2d");new Chart(ctxK,{type:"bar",data:{labels:["KTB","Pemimpin","Adek","Pertemuan"],datasets:[{data:['.$ktbCount.','.$leaderCount.','.$memberCount.','.$meetingTotal.'],backgroundColor:["#2196f3","#9c27b0","#ffc107","#4caf50"]}]},options:{plugins:{legend:{display:false}}}});</script>';
+    echo '<script>new Chart(document.getElementById("chartKTB").getContext("2d"),{type:"bar",data:{labels:["KTB","Pemimpin","Adek","Pertemuan"],datasets:[{data:['.$ktbCount.','.$leaderCount.','.$memberCount.','.$meetingTotal.'],backgroundColor:["#2196f3","#9c27b0","#ffc107","#4caf50"]}]},options:{plugins:{legend:{display:false}}}});</script>';
   }
   echo '</div>';
 
@@ -1013,7 +1013,7 @@ if ($action==='analysis') {
     echo '<ul>';
     foreach ($meetingCounts as $k=>$v) echo '<li>'.e($k).': '.e($v).'</li>';
     echo '</ul>';
-    echo '<script>const ctxM=document.getElementById("chartMeeting").getContext("2d");new Chart(ctxM,{type:"pie",data:{labels:["'.implode('","',$labels).'"],datasets:[{data:['.implode(',', $dataVals).'],backgroundColor:["'.implode('","',$colors).'"]}]}});</script>';
+    echo '<script>new Chart(document.getElementById("chartMeeting").getContext("2d"),{type:"pie",data:{labels:["'.implode('","',$labels).'"],datasets:[{data:['.implode(',', $dataVals).'],backgroundColor:["'.implode('","',$colors).'"]}]}});</script>';
   }
   echo '</div>';
 
