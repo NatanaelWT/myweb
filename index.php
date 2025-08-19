@@ -736,6 +736,7 @@ function layout_header($title) {
   .chart-row{display:flex;flex-wrap:wrap;gap:16px}
   .chart-row .card{flex:1 1 260px}
   .chart-row canvas{max-width:100%;height:auto}
+  @media(max-width:600px){.chart-row{flex-direction:column}}
 
   /* Tabel responsive via wrapper */
   .table-wrap{width:100%;overflow-x:auto}
@@ -854,12 +855,21 @@ if ($action==='analysis') {
   $ktbMap  = []; foreach ($ktb as $k) $ktbMap[$k['id']] = $k;
   $userMap = []; foreach ($users as $u) $userMap[strtolower($u['username'])] = $u;
 
-  $angkatanOpts = array_unique(array_filter(array_map(fn($u)=>$u['angkatan'] ?? '', $users)));
+  // map each KTB to its leader's angkatan
+  $ktbLeaderAng = [];
+  foreach ($memberships as $m) {
+    if (($m['role'] ?? '') !== 'leader') continue;
+    $u = $userMap[strtolower($m['username'])] ?? null;
+    if ($u) $ktbLeaderAng[$m['ktb_id']] = $u['angkatan'] ?? '';
+  }
+  $angkatanOpts = array_unique(array_filter(array_values($ktbLeaderAng)));
   sort($angkatanOpts);
 
+  // summary counts for KTB, unique leaders, and members
   $ktbCount = 0;
   foreach ($ktb as $k) {
     if ($campus_id && (($k['campus_id'] ?? '') !== $campus_id)) continue;
+    if ($angkatan && (($ktbLeaderAng[$k['id']] ?? '') !== $angkatan)) continue;
     $ktbCount++;
   }
   $uniqueUsers = [];
@@ -868,8 +878,9 @@ if ($action==='analysis') {
     $kt = $ktbMap[$m['ktb_id']] ?? null;
     if (!$kt) continue;
     if ($campus_id && (($kt['campus_id'] ?? '') !== $campus_id)) continue;
+    if ($angkatan && (($ktbLeaderAng[$m['ktb_id']] ?? '') !== $angkatan)) continue;
     $u = $userMap[strtolower($m['username'])] ?? null;
-    if ($angkatan && (!$u || ($u['angkatan'] ?? '') !== $angkatan)) continue;
+    if (!$u) continue;
     $un = strtolower($m['username']);
     $uniqueUsers[$un] = true;
     if (($m['role'] ?? '') === 'leader') $uniqueLeaders[$un] = true;
@@ -885,15 +896,7 @@ if ($action==='analysis') {
     $kt = $ktbMap[$m['ktb_id']] ?? null;
     if (!$kt) continue;
     if ($campus_id && (($kt['campus_id'] ?? '') !== $campus_id)) continue;
-    if ($angkatan) {
-      $has = false;
-      foreach ($memberships as $mem) {
-        if ($mem['ktb_id'] != $m['ktb_id']) continue;
-        $u = $userMap[strtolower($mem['username'])] ?? null;
-        if ($u && ($u['angkatan'] ?? '') === $angkatan) { $has = true; break; }
-      }
-      if (!$has) continue;
-    }
+    if ($angkatan && (($ktbLeaderAng[$m['ktb_id']] ?? '') !== $angkatan)) continue;
     $name = $kt['name'] ?? ('KTB '.$m['ktb_id']);
     if (!isset($meetingCounts[$name])) $meetingCounts[$name] = 0;
     $meetingCounts[$name]++;
