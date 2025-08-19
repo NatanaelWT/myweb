@@ -970,8 +970,7 @@ if ($action==='analysis') {
   $meetingTotal = array_sum($meetingCounts);
 
   // Filter form
-  echo '<div class="card"><h3>Filter</h3><form method="post" action="" class="filter-inline">';
-  echo '<input type="hidden" name="action" value="analysis">';
+  echo '<div class="card"><h3>Filter</h3><form method="post" action="?action=analysis" class="filter-inline">';
   echo '<div><label>Kampus</label><select name="campus_id"><option value="">-- Semua --</option>';
   foreach ($campuses as $c) {
     $sel = $campus_id === ($c['id'] ?? '') ? 'selected' : '';
@@ -987,7 +986,7 @@ if ($action==='analysis') {
   echo '<div><label>Dari Tanggal</label><input type="date" name="start" value="'.e($start).'"></div>';
   echo '<div><label>Sampai Tanggal</label><input type="date" name="end" value="'.e($end).'"></div>';
   echo '</form></div>';
-  echo '<script>document.querySelectorAll(".filter-inline input,.filter-inline select").forEach(el=>el.addEventListener("change",()=>el.form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))));</script>';
+  echo '<script>document.querySelectorAll(".filter-inline input,.filter-inline select").forEach(el=>el.addEventListener("change",()=>el.form.submit()));</script>';
 
   echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
 
