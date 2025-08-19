@@ -806,7 +806,33 @@ function layout_header($title) {
   }
   echo '</nav></header><div class="container">';
 }
-function layout_footer(){ echo '</div></body></html>'; }
+function layout_footer(){
+  echo <<<'HTML'
+<script>
+document.addEventListener("submit", function(e){
+  var form = e.target;
+  if(form.tagName === "FORM"){
+    e.preventDefault();
+    fetch(form.action || window.location.href, {
+      method: (form.method || "GET").toUpperCase(),
+      body: (form.method || "GET").toUpperCase() === "GET" ? null : new FormData(form)
+    }).then(function(res){ return res.text(); }).then(function(html){
+      document.open(); document.write(html); document.close();
+    });
+  }
+});
+document.addEventListener("click", function(e){
+  var a = e.target.closest("a");
+  if(a && a.getAttribute("href") && !a.getAttribute("target") && !a.getAttribute("href").startsWith("#")){
+    e.preventDefault();
+    fetch(a.getAttribute("href")).then(function(res){ return res.text(); }).then(function(html){
+      document.open(); document.write(html); document.close();
+    });
+  }
+});
+</script></div></body></html>
+HTML;
+}
 function flash_msg($msg) { if (!$msg) return; echo '<div class="card">'.e($msg).'</div>'; }
 
 // -----------------------------
