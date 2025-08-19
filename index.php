@@ -813,10 +813,18 @@ document.addEventListener("submit", function(e){
   var form = e.target;
   if(form.tagName === "FORM"){
     e.preventDefault();
-    fetch(form.action || window.location.href, {
-      method: (form.method || "GET").toUpperCase(),
-      body: (form.method || "GET").toUpperCase() === "GET" ? null : new FormData(form)
-    }).then(function(res){ return res.text(); }).then(function(html){
+    var method = (form.method || "GET").toUpperCase();
+    var url = form.action || window.location.href;
+    var options = { method: method };
+    if(method === "GET"){
+      var params = new URLSearchParams(new FormData(form)).toString();
+      if(params){
+        url += (url.indexOf("?") === -1 ? "?" : "&") + params;
+      }
+    } else {
+      options.body = new FormData(form);
+    }
+    fetch(url, options).then(function(res){ return res.text(); }).then(function(html){
       document.open(); document.write(html); document.close();
     });
   }
