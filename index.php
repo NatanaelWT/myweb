@@ -736,7 +736,6 @@ function layout_header($title) {
   .chart-row{display:flex;flex-wrap:wrap;gap:16px}
   .chart-row .card{flex:1 1 260px}
   .chart-row canvas{max-width:100%;height:auto}
-  @media(max-width:600px){.chart-row{flex-direction:column}}
 
   /* Tabel responsive via wrapper */
   .table-wrap{width:100%;overflow-x:auto}
@@ -858,7 +857,6 @@ if ($action==='analysis') {
   $angkatanOpts = array_unique(array_filter(array_map(fn($u)=>$u['angkatan'] ?? '', $users)));
   sort($angkatanOpts);
 
-  // summary counts for KTB, unique leaders, and members
   $ktbCount = 0;
   foreach ($ktb as $k) {
     if ($campus_id && (($k['campus_id'] ?? '') !== $campus_id)) continue;
