@@ -25,6 +25,17 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 mb_internal_encoding('UTF-8');
 
+function flash($msg=null) {
+  if ($msg === null) {
+    $m = $_SESSION['flash'] ?? '';
+    unset($_SESSION['flash']);
+    return $m;
+  }
+  $_SESSION['flash'] = $msg;
+}
+
+$msg = flash();
+
 // -----------------------------
 // Konfigurasi dasar
 // -----------------------------
@@ -160,7 +171,9 @@ function save_ktb($row) {
 }
 function delete_ktb($id) {
   $m = db_read('memberships');
-  foreach ($m as $r) if ($r['ktb_id'] === $id) return false;
+  foreach ($m as $r) {
+    if ($r['ktb_id'] === $id && (($r['role'] ?? '') !== 'leader')) return false;
+  }
 
   $meet = db_read('meetings');
   foreach ($meet as $mm) if ($mm['ktb_id'] === $id) return false;
@@ -168,6 +181,11 @@ function delete_ktb($id) {
   $rows = db_read('ktb_groups');
   $rows = array_values(array_filter($rows, fn($r)=>$r['id']!==$id));
   db_save('ktb_groups',$rows);
+
+  // Hapus semua membership terkait (termasuk pemimpin)
+  $m = array_values(array_filter($m, fn($r)=>$r['ktb_id'] !== $id));
+  db_save('memberships', $m);
+
   return true;
 }
 
@@ -362,8 +380,8 @@ if (is_logged_in()) {
       'contact_phone'=> trim($_POST['contact_phone'] ?? ''),
       'created_at' => date('c')
     ];
-    if ($row['name']==='') $msg='Nama kampus/unit wajib.';
-    else { save_campus($row); $msg='Kampus ditambahkan.'; }
+    if ($row['name']==='') flash('Nama kampus/unit wajib.');
+    else { save_campus($row); flash('Kampus ditambahkan.'); }
     header('Location:?action=campuses'); exit;
   }
   if ($action==='campus_update' && $_SERVER['REQUEST_METHOD']==='POST' && is_admin()) {
@@ -371,14 +389,14 @@ if (is_logged_in()) {
     $id = $_POST['id'] ?? '';
     $row = get_campus($id); if ($row) {
       foreach (['name','city','region','contact_name','contact_phone'] as $k) $row[$k] = trim($_POST[$k] ?? '');
-      save_campus($row); $msg='Kampus diperbarui.';
+      save_campus($row); flash('Kampus diperbarui.');
     }
     header('Location:?action=campuses'); exit;
   }
   if ($action==='campus_delete' && $_SERVER['REQUEST_METHOD']==='POST' && is_admin()) {
     if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
-    if (delete_campus($_POST['id'] ?? '')) $msg='Kampus dihapus.';
-    else $msg='Kampus masih dipakai, tidak dapat dihapus.';
+    if (delete_campus($_POST['id'] ?? '')) flash('Kampus dihapus.');
+    else flash('Kampus masih dipakai, tidak dapat dihapus.');
     header('Location:?action=campuses'); exit;
   }
 
@@ -397,9 +415,9 @@ if (is_logged_in()) {
     $role     = in_array($_POST['role'] ?? '', ['user','admin'], true) ? $_POST['role'] : 'user';
 
     if ($username==='' || $password==='') {
-      $msg='Username dan password wajib.';
+      flash('Username dan password wajib.');
     } elseif (user_exists($username)) {
-      $msg='Username sudah dipakai.';
+      flash('Username sudah dipakai.');
     } else {
       if ($campus_id !== '' && !get_campus($campus_id)) $campus_id = '';
       $user = [
@@ -415,7 +433,7 @@ if (is_logged_in()) {
         'created_at'    => date('c')
       ];
       save_user($user);
-      $msg='Pengguna ditambahkan.';
+      flash('Pengguna ditambahkan.');
     }
     header('Location:?action=users'); exit;
   }
@@ -456,7 +474,7 @@ if (is_logged_in()) {
       $ok++;
     }
 
-    $msg = "Bulk add selesai: berhasil $ok, duplikat $skip, gagal $errCount.";
+    flash("Bulk add selesai: berhasil $ok, duplikat $skip, gagal $errCount.");
     header('Location:?action=users'); exit;
   }
 
@@ -478,7 +496,7 @@ if (is_logged_in()) {
 
       save_user($u);
       if (isset($_SESSION['user']) && strcasecmp($_SESSION['user']['username'],$u['username'])===0) $_SESSION['user']=$u;
-      $msg='Data pengguna diperbarui.';
+      flash('Data pengguna diperbarui.');
     }
     header('Location:?action=users'); exit;
   }
@@ -490,7 +508,7 @@ if (is_logged_in()) {
       $new = $_POST['newpw'] ?? '12345678';
       $u['password_hash'] = password_hash($new, PASSWORD_BCRYPT);
       save_user($u);
-      $msg='Password direset.';
+      flash('Password direset.');
     }
     header('Location:?action=users'); exit;
   }
@@ -501,9 +519,9 @@ if (is_logged_in()) {
     if ($uname !== '') {
       if (delete_user($uname)) {
         if (isset($_SESSION['user']) && strcasecmp($_SESSION['user']['username'],$uname)===0) unset($_SESSION['user']);
-        $msg='Pengguna dihapus.';
+        flash('Pengguna dihapus.');
       } else {
-        $msg='Pengguna masih memiliki relasi, tidak dapat dihapus.';
+        flash('Pengguna masih memiliki relasi, tidak dapat dihapus.');
       }
     }
     header('Location:?action=users'); exit;
@@ -521,7 +539,7 @@ if (is_logged_in()) {
       : 'aktif';
 
     if ($leader==='' || !user_exists($leader)) {
-      $msg = 'Pemimpin wajib dan harus username yang sudah terdaftar.';
+      flash('Pemimpin wajib dan harus username yang sudah terdaftar.');
       header('Location:?action=ktb'); exit;
     }
 
@@ -536,12 +554,12 @@ if (is_logged_in()) {
     ];
 
     if ($row['name']==='' || $row['campus_id']==='') {
-      $msg='Nama & kampus wajib.'; header('Location:?action=ktb'); exit;
+      flash('Nama & kampus wajib.'); header('Location:?action=ktb'); exit;
     }
 
     save_ktb($row);
     add_membership($row['leader'],$row['id'],'leader');
-    $msg='KTB dibuat.';
+    flash('KTB dibuat.');
     header('Location:?action=ktb'); exit;
   }
 
@@ -562,7 +580,7 @@ if (is_logged_in()) {
 
       if ($newLeader === '' || !user_exists($newLeader)) {
         save_ktb($ktb);
-        $msg='Perubahan disimpan kecuali Pemimpin: leader wajib & harus username terdaftar.';
+        flash('Perubahan disimpan kecuali Pemimpin: leader wajib & harus username terdaftar.');
       } else {
         $ktb['leader'] = $newLeader;
         save_ktb($ktb);
@@ -570,7 +588,7 @@ if (is_logged_in()) {
           if ($oldLeader!=='') remove_membership($oldLeader,$ktb['id']);
           add_membership($newLeader,$ktb['id'],'leader');
         }
-        $msg='KTB diperbarui.';
+        flash('KTB diperbarui.');
       }
     }
     header('Location:?action=my'); exit;
@@ -578,8 +596,8 @@ if (is_logged_in()) {
 
   if ($action==='ktb_delete' && $_SERVER['REQUEST_METHOD']==='POST' && is_admin()) {
     if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
-    if (delete_ktb($_POST['id'] ?? '')) $msg='KTB dihapus.';
-    else $msg='KTB masih memiliki relasi, tidak dapat dihapus.';
+    if (delete_ktb($_POST['id'] ?? '')) flash('KTB dihapus.');
+    else flash('KTB masih memiliki relasi, tidak dapat dihapus.');
     header('Location:?action=my'); exit;
   }
 
@@ -589,8 +607,8 @@ if (is_logged_in()) {
     $ktb_id = $_POST['ktb_id'] ?? '';
     if (is_admin() || is_ktb_leader(current_user()['username'],$ktb_id)) {
       $uname = trim($_POST['username'] ?? '');
-      if ($uname==='' || !user_exists($uname)) { $msg='User tidak ditemukan.'; }
-      else { add_membership($uname,$ktb_id,'member'); $msg='Anggota ditambahkan.'; }
+      if ($uname==='' || !user_exists($uname)) { flash('User tidak ditemukan.'); }
+      else { add_membership($uname,$ktb_id,'member'); flash('Anggota ditambahkan.'); }
       header('Location:?action=ktb_members&ktb_id='.urlencode($ktb_id)); exit;
     } else { header('Location:?action=dashboard'); exit; }
   }
@@ -599,7 +617,7 @@ if (is_logged_in()) {
     $ktb_id = $_POST['ktb_id'] ?? '';
     if (is_admin() || is_ktb_leader(current_user()['username'],$ktb_id)) {
       $uname = $_POST['username'] ?? '';
-      remove_membership($uname,$ktb_id); $msg='Anggota dihapus.';
+      remove_membership($uname,$ktb_id); flash('Anggota dihapus.');
       header('Location:?action=ktb_members&ktb_id='.urlencode($ktb_id)); exit;
     } else { header('Location:?action=dashboard'); exit; }
   }
@@ -619,7 +637,7 @@ if (is_logged_in()) {
         'status' => 'scheduled',
         'photo'  => ''
       ];
-      save_meeting($row); $msg='Pertemuan dibuat. Setelah selesai, serahkan absensi & upload foto.';
+      save_meeting($row); flash('Pertemuan dibuat. Setelah selesai, serahkan absensi & upload foto.');
       header('Location:?action=meetings&ktb_id='.urlencode($ktb_id)); exit;
     } else { header('Location:?action=dashboard'); exit; }
   }
@@ -628,7 +646,7 @@ if (is_logged_in()) {
     $meeting_id = $_POST['meeting_id'] ?? '';
     $m = get_meeting($meeting_id);
     if ($m && (is_admin() || is_ktb_leader(current_user()['username'],$m['ktb_id']))) {
-      delete_meeting($meeting_id); $msg='Pertemuan dihapus.';
+      delete_meeting($meeting_id); flash('Pertemuan dihapus.');
       header('Location:?action=meetings&ktb_id='.urlencode($m['ktb_id'])); exit;
     } else { header('Location:?action=dashboard'); exit; }
   }
@@ -641,7 +659,7 @@ if (is_logged_in()) {
     if ($m && (is_admin() || is_ktb_leader(current_user()['username'],$m['ktb_id']))) {
       $today = date('Y-m-d');
       if ($m['date'] > $today) {
-        $msg='Absensi & foto hanya bisa diserahkan pada tanggal pertemuan atau setelahnya.';
+        flash('Absensi & foto hanya bisa diserahkan pada tanggal pertemuan atau setelahnya.');
         header('Location:?action=attendance&meeting_id='.urlencode($meeting_id)); exit;
       }
       foreach (($_POST['status'] ?? []) as $username=>$status) {
@@ -652,14 +670,14 @@ if (is_logged_in()) {
       if (empty($meet['photo'])) {
         [$ok, $path, $errUp] = handle_photo_upload('report_photo', $meeting_id);
         if ($ok && $path) { $meet['photo'] = $path; save_meeting($meet); }
-        elseif ($errUp) { $msg = 'Absensi disimpan, unggah foto gagal: '.$errUp; header('Location:?action=attendance&meeting_id='.urlencode($meeting_id)); exit; }
+        elseif ($errUp) { flash('Absensi disimpan, unggah foto gagal: '.$errUp); header('Location:?action=attendance&meeting_id='.urlencode($meeting_id)); exit; }
       }
       $meet = get_meeting($meeting_id);
       if (($meet['photo'] ?? '') !== '' && has_any_attendance($meeting_id)) {
         $meet['status'] = 'completed'; save_meeting($meet);
-        $msg='Laporan pertemuan lengkap (absensi + foto) tersimpan.';
+        flash('Laporan pertemuan lengkap (absensi + foto) tersimpan.');
       } else {
-        $msg='Absensi disimpan. Lengkapi dengan foto agar tidak dibatalkan.';
+        flash('Absensi disimpan. Lengkapi dengan foto agar tidak dibatalkan.');
       }
       header('Location:?action=attendance&meeting_id='.urlencode($meeting_id)); exit;
     } else { header('Location:?action=dashboard'); exit; }
