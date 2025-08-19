@@ -724,6 +724,20 @@ function layout_header($title) {
   .status-cancelled{color:#ff5d6c}
   img.thumb{max-width:120px;border-radius:8px;border:1px solid #2a3b76}
 
+  .filter-inline{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  .filter-inline div{flex:0 0 auto}
+  .filter-inline input,.filter-inline select{width:auto}
+  @media(max-width:600px){
+    .filter-inline{flex-direction:column}
+    .filter-inline div{width:100%}
+    .filter-inline input,.filter-inline select{width:100%}
+  }
+
+  .chart-row{display:flex;flex-wrap:wrap;gap:16px}
+  .chart-row .card{flex:1 1 260px}
+  .chart-row canvas{max-width:100%;height:auto}
+  @media(max-width:600px){.chart-row{flex-direction:column}}
+
   /* Tabel responsive via wrapper */
   .table-wrap{width:100%;overflow-x:auto}
   table{width:100%;border-collapse:collapse;min-width:720px}
@@ -751,6 +765,7 @@ function layout_header($title) {
     if (is_admin()) {
       echo '<a href="?action=campuses" title="Kampus/Unit">Kampus</a>';
       echo '<a href="?action=users" title="Pengguna">Users</a>';
+      echo '<a href="?action=analysis" title="Analisis Data">Analisis</a>';
     }
     echo '<a href="?action=ktb" title="Kelola KTB">KTB</a>';
     echo '<a href="?action=my" title="Profil Saya">Saya</a>';
@@ -816,6 +831,137 @@ if ($action==='dashboard') {
 }
 function card_stat($label,$value){
   return '<div class="card"><div class="muted">'.$label.'</div><div style="font-size:2rem;font-weight:800">'.e($value).'</div></div>';
+}
+
+// ANALYSIS (admin)
+if ($action==='analysis') {
+  if (!is_admin()) { header('Location:?action=dashboard'); exit; }
+
+  layout_header('Analisis Data');
+
+  // filters
+  $campus_id = $_GET['campus_id'] ?? '';
+  $angkatan  = $_GET['angkatan'] ?? '';
+  $start     = $_GET['start'] ?? '';
+  $end       = $_GET['end'] ?? '';
+
+  $campuses = db_read('campuses');
+  $users    = db_read('users');
+  $meetings     = db_read('meetings');
+  $ktb          = db_read('ktb_groups');
+  $memberships  = db_read('memberships');
+
+  // maps for quick lookup
+  $ktbMap  = []; foreach ($ktb as $k) $ktbMap[$k['id']] = $k;
+  $userMap = []; foreach ($users as $u) $userMap[strtolower($u['username'])] = $u;
+
+  $angkatanOpts = array_unique(array_filter(array_map(fn($u)=>$u['angkatan'] ?? '', $users)));
+  sort($angkatanOpts);
+
+  // summary counts for KTB, unique leaders, and members
+  $ktbCount = 0;
+  foreach ($ktb as $k) {
+    if ($campus_id && (($k['campus_id'] ?? '') !== $campus_id)) continue;
+    $ktbCount++;
+  }
+  $uniqueUsers = [];
+  $uniqueLeaders = [];
+  foreach ($memberships as $m) {
+    $kt = $ktbMap[$m['ktb_id']] ?? null;
+    if (!$kt) continue;
+    if ($campus_id && (($kt['campus_id'] ?? '') !== $campus_id)) continue;
+    $u = $userMap[strtolower($m['username'])] ?? null;
+    if ($angkatan && (!$u || ($u['angkatan'] ?? '') !== $angkatan)) continue;
+    $un = strtolower($m['username']);
+    $uniqueUsers[$un] = true;
+    if (($m['role'] ?? '') === 'leader') $uniqueLeaders[$un] = true;
+  }
+  $leaderCount = count($uniqueLeaders);
+  $memberCount = max(0, count($uniqueUsers) - $leaderCount);
+
+  // meeting counts per KTB for pie chart
+  $meetingCounts = [];
+  foreach ($meetings as $m) {
+    if ($start && ($m['date'] ?? '') < $start) continue;
+    if ($end && ($m['date'] ?? '') > $end) continue;
+    $kt = $ktbMap[$m['ktb_id']] ?? null;
+    if (!$kt) continue;
+    if ($campus_id && (($kt['campus_id'] ?? '') !== $campus_id)) continue;
+    if ($angkatan) {
+      $has = false;
+      foreach ($memberships as $mem) {
+        if ($mem['ktb_id'] != $m['ktb_id']) continue;
+        $u = $userMap[strtolower($mem['username'])] ?? null;
+        if ($u && ($u['angkatan'] ?? '') === $angkatan) { $has = true; break; }
+      }
+      if (!$has) continue;
+    }
+    $name = $kt['name'] ?? ('KTB '.$m['ktb_id']);
+    if (!isset($meetingCounts[$name])) $meetingCounts[$name] = 0;
+    $meetingCounts[$name]++;
+  }
+  $meetingTotal = array_sum($meetingCounts);
+
+  // Filter form
+  echo '<div class="card"><h3>Filter</h3><form method="get" action="" class="filter-inline">';
+  echo '<input type="hidden" name="action" value="analysis">';
+  echo '<div><label>Kampus</label><select name="campus_id"><option value="">-- Semua --</option>';
+  foreach ($campuses as $c) {
+    $sel = $campus_id === ($c['id'] ?? '') ? 'selected' : '';
+    echo '<option value="'.e($c['id']).'" '.$sel.'>'.e($c['name']).'</option>';
+  }
+  echo '</select></div>';
+  echo '<div><label>Angkatan</label><select name="angkatan"><option value="">-- Semua --</option>';
+  foreach ($angkatanOpts as $ang) {
+    $sel = $angkatan === $ang ? 'selected' : '';
+    echo '<option value="'.e($ang).'" '.$sel.'>'.e($ang).'</option>';
+  }
+  echo '</select></div>';
+  echo '<div><label>Dari Tanggal</label><input type="date" name="start" value="'.e($start).'"></div>';
+  echo '<div><label>Sampai Tanggal</label><input type="date" name="end" value="'.e($end).'"></div>';
+  echo '<div class="mt8"><button class="btn-icon" title="Terapkan">Terapkan</button></div>';
+  echo '</form></div>';
+
+  echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
+
+  echo '<div class="chart-row">';
+
+  echo '<div class="card"><h3>Statistik KTB</h3>';
+  $sumAll = $ktbCount + $leaderCount + $memberCount + $meetingTotal;
+  if ($sumAll === 0) {
+    echo '<div class="muted">Belum ada data untuk filter ini.</div>';
+  } else {
+    echo '<canvas id="chartKTB" width="300" height="220"></canvas>';
+    echo '<ul>';
+    echo '<li>Jumlah KTB: '.e($ktbCount).'</li>';
+    echo '<li>Jumlah Pemimpin: '.e($leaderCount).'</li>';
+    echo '<li>Jumlah Adek: '.e($memberCount).'</li>';
+    echo '<li>Jumlah Pertemuan: '.e($meetingTotal).'</li>';
+    echo '</ul>';
+    echo '<script>const ctxK=document.getElementById("chartKTB").getContext("2d");new Chart(ctxK,{type:"bar",data:{labels:["KTB","Pemimpin","Adek","Pertemuan"],datasets:[{data:['.$ktbCount.','.$leaderCount.','.$memberCount.','.$meetingTotal.'],backgroundColor:["#2196f3","#9c27b0","#ffc107","#4caf50"]}]},options:{plugins:{legend:{display:false}}}});</script>';
+  }
+  echo '</div>';
+
+  echo '<div class="card"><h3>Ringkasan Pertemuan</h3>';
+  if (!$meetingCounts) {
+    echo '<div class="muted">Belum ada data untuk filter ini.</div>';
+  } else {
+    $labels = array_map('e', array_keys($meetingCounts));
+    $dataVals = array_values($meetingCounts);
+    $colors = [];
+    $countLabels = count($labels);
+    for ($i=0;$i<$countLabels;$i++) $colors[] = 'hsl('.(360*$i/$countLabels).',70%,60%)';
+    echo '<canvas id="chartMeeting" width="300" height="220"></canvas>';
+    echo '<ul>';
+    foreach ($meetingCounts as $k=>$v) echo '<li>'.e($k).': '.e($v).'</li>';
+    echo '</ul>';
+    echo '<script>const ctxM=document.getElementById("chartMeeting").getContext("2d");new Chart(ctxM,{type:"pie",data:{labels:["'.implode('","',$labels).'"],datasets:[{data:['.implode(',', $dataVals).'],backgroundColor:["'.implode('","',$colors).'"]}]}});</script>';
+  }
+  echo '</div>';
+
+  echo '</div>';
+
+  layout_footer(); exit;
 }
 
 // CAMPUSES (admin)
