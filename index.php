@@ -813,11 +813,18 @@ document.addEventListener("submit", function(e){
   var form = e.target;
   if(form.tagName === "FORM"){
     e.preventDefault();
-    fetch(form.action || window.location.href, {
-      method: (form.method || "GET").toUpperCase(),
-      body: (form.method || "GET").toUpperCase() === "GET" ? null : new FormData(form)
-    }).then(function(res){ return res.text(); }).then(function(html){
+    var method = (form.method || "GET").toUpperCase();
+    var url = form.action || window.location.href;
+    var opts = { method: method };
+    if(method === "GET"){
+      var params = new URLSearchParams(new FormData(form));
+      url = url.split("?")[0] + (params.toString() ? "?"+params.toString() : "");
+    } else {
+      opts.body = new FormData(form);
+    }
+    fetch(url, opts).then(function(res){ return res.text(); }).then(function(html){
       document.open(); document.write(html); document.close();
+      history.pushState(null, "", url);
     });
   }
 });
@@ -825,8 +832,10 @@ document.addEventListener("click", function(e){
   var a = e.target.closest("a");
   if(a && a.getAttribute("href") && !a.getAttribute("target") && !a.getAttribute("href").startsWith("#")){
     e.preventDefault();
-    fetch(a.getAttribute("href")).then(function(res){ return res.text(); }).then(function(html){
+    var href = a.getAttribute("href");
+    fetch(href).then(function(res){ return res.text(); }).then(function(html){
       document.open(); document.write(html); document.close();
+      history.pushState(null, "", href);
     });
   }
 });
