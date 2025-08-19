@@ -342,11 +342,15 @@ if ($action==='do_login' && $_SERVER['REQUEST_METHOD']==='POST') {
     $err='Login gagal.'; $action='login';
   } else {
     $_SESSION['user'] = $user;
+    flash('Login berhasil.');
     header('Location:?action=dashboard'); exit;
   }
 }
 if ($action==='logout') {
-  session_destroy(); header('Location:?action=login'); exit;
+  flash('Anda telah logout.');
+  unset($_SESSION['user']);
+  session_regenerate_id(true);
+  header('Location:?action=login'); exit;
 }
 
 // -----------------------------
