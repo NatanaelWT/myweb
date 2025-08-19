@@ -541,10 +541,10 @@ if (is_logged_in()) {
     if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
     $u = get_user($_POST['username'] ?? '');
     if ($u) {
-      $new = $_POST['newpw'] ?? '12345678';
-      $u['password_enc'] = encrypt_password($new);
+      $default = '12345678';
+      $u['password_enc'] = encrypt_password($default);
       save_user($u);
-      flash('Password direset.','success');
+      flash('Password direset ke 12345678.','success');
     }
     header('Location:?action=users'); exit;
   }
@@ -1271,10 +1271,8 @@ if ($action==='users') {
               </div>
 
               <div class="mt8">
-                <label>Password baru</label>
-                <input type="text" name="newpw" value="12345678" style="max-width:160px" placeholder="PW baru">
-              <button class="btn-ghost" title="Reset password" type="submit" formaction="?action=user_resetpw">Reset</button>
-            </div>
+                <button class="btn-ghost" title="Reset password ke 12345678" type="submit" formaction="?action=user_resetpw">Reset PW (12345678)</button>
+              </div>
 
             </form>
           </details>
