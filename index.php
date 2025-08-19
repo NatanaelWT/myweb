@@ -104,24 +104,21 @@ function save_user($user) {
   db_save('users',$users);
 }
 function delete_user($username) {
+  $m = db_read('memberships');
+  foreach ($m as $r) if (strcasecmp($r['username'] ?? '', $username)===0) return false;
+
+  $att = db_read('attendance');
+  foreach ($att as $a) if (strcasecmp($a['username'] ?? '', $username)===0) return false;
+
+  $ktbs = db_read('ktb_groups');
+  foreach ($ktbs as $k) {
+    if (isset($k['leader']) && strcasecmp($k['leader'],$username)===0) return false;
+  }
+
   $users = db_read('users');
   $users = array_values(array_filter($users, fn($u)=>strcasecmp($u['username'] ?? '', $username)!==0));
   db_save('users',$users);
-
-  $m = db_read('memberships');
-  $m = array_values(array_filter($m, fn($r)=>strcasecmp($r['username'] ?? '', $username)!==0));
-  db_save('memberships',$m);
-
-  $att = db_read('attendance');
-  $att = array_values(array_filter($att, fn($a)=>strcasecmp($a['username'] ?? '', $username)!==0));
-  db_save('attendance',$att);
-
-  $ktbs = db_read('ktb_groups');
-  $changed=false;
-  foreach ($ktbs as &$k) {
-    if (isset($k['leader']) && strcasecmp($k['leader'],$username)===0) { $k['leader']=''; $changed=true; }
-  }
-  if ($changed) db_save('ktb_groups',$ktbs);
+  return true;
 }
 function user_exists($username) { return get_user($username) !== null; }
 
@@ -138,9 +135,15 @@ function save_campus($row) {
   db_save('campuses',$rows);
 }
 function delete_campus($id) {
+  $users = db_read('users');
+  foreach ($users as $u) if (($u['campus_id'] ?? '') === $id) return false;
+  $ktbs = db_read('ktb_groups');
+  foreach ($ktbs as $k) if (($k['campus_id'] ?? '') === $id) return false;
+
   $rows = db_read('campuses');
   $rows = array_values(array_filter($rows, fn($r)=>$r['id']!==$id));
   db_save('campuses',$rows);
+  return true;
 }
 
 function get_ktb($id) {
@@ -156,26 +159,16 @@ function save_ktb($row) {
   db_save('ktb_groups',$rows);
 }
 function delete_ktb($id) {
+  $m = db_read('memberships');
+  foreach ($m as $r) if ($r['ktb_id'] === $id) return false;
+
+  $meet = db_read('meetings');
+  foreach ($meet as $mm) if ($mm['ktb_id'] === $id) return false;
+
   $rows = db_read('ktb_groups');
   $rows = array_values(array_filter($rows, fn($r)=>$r['id']!==$id));
   db_save('ktb_groups',$rows);
-
-  // Hapus membership, meetings, attendance terkait
-  $m = db_read('memberships');
-  $m = array_values(array_filter($m, fn($x)=>$x['ktb_id']!==$id));
-  db_save('memberships',$m);
-
-  $meet = db_read('meetings');
-  $meet_ids = [];
-  foreach ($meet as $mm) if ($mm['ktb_id']===$id) $meet_ids[] = $mm['id'];
-  $meet = array_values(array_filter($meet, fn($x)=>$x['ktb_id']!==$id));
-  db_save('meetings',$meet);
-
-  if ($meet_ids) {
-    $att = db_read('attendance');
-    $att = array_values(array_filter($att, fn($a)=>!in_array($a['meeting_id'],$meet_ids,true)));
-    db_save('attendance',$att);
-  }
+  return true;
 }
 
 function memberships_of_ktb($ktb_id) {
@@ -384,8 +377,9 @@ if (is_logged_in()) {
   }
   if ($action==='campus_delete' && $_SERVER['REQUEST_METHOD']==='POST' && is_admin()) {
     if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
-    delete_campus($_POST['id'] ?? '');
-    $msg='Kampus dihapus.'; header('Location:?action=campuses'); exit;
+    if (delete_campus($_POST['id'] ?? '')) $msg='Kampus dihapus.';
+    else $msg='Kampus masih dipakai, tidak dapat dihapus.';
+    header('Location:?action=campuses'); exit;
   }
 
   // USERS (admin) — tambah, edit, reset, bulk
@@ -505,9 +499,12 @@ if (is_logged_in()) {
     if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
     $uname = $_POST['username'] ?? '';
     if ($uname !== '') {
-      delete_user($uname);
-      if (isset($_SESSION['user']) && strcasecmp($_SESSION['user']['username'],$uname)===0) unset($_SESSION['user']);
-      $msg='Pengguna dihapus.';
+      if (delete_user($uname)) {
+        if (isset($_SESSION['user']) && strcasecmp($_SESSION['user']['username'],$uname)===0) unset($_SESSION['user']);
+        $msg='Pengguna dihapus.';
+      } else {
+        $msg='Pengguna masih memiliki relasi, tidak dapat dihapus.';
+      }
     }
     header('Location:?action=users'); exit;
   }
@@ -581,8 +578,8 @@ if (is_logged_in()) {
 
   if ($action==='ktb_delete' && $_SERVER['REQUEST_METHOD']==='POST' && is_admin()) {
     if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
-    delete_ktb($_POST['id'] ?? '');
-    $msg='KTB dihapus.';
+    if (delete_ktb($_POST['id'] ?? '')) $msg='KTB dihapus.';
+    else $msg='KTB masih memiliki relasi, tidak dapat dihapus.';
     header('Location:?action=my'); exit;
   }
 
