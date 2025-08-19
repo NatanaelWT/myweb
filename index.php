@@ -13,7 +13,7 @@
  * Perubahan terkini:
  * - HAPUS pendaftaran umum: tidak ada menu/register page. User hanya bisa ditambahkan oleh Admin.
  * - Admin dapat menambahkan 1 user atau banyak user sekaligus (kampus sama).
- * - Data user mencakup: username, nama lengkap, telepon, kampus, angkatan, jurusan, jenis kelamin, password (hash), role.
+* - Data user mencakup: username, nama lengkap, telepon, kampus, angkatan, jurusan, jenis kelamin, password (token), role.
  * - Reset PW aman (pakai formaction), tabel responsif (.table-wrap).
  * - Aksi KTB hanya di halaman "Saya"; halaman "KTB" tanpa kolom aksi.
  * - Field schedule/location untuk KTB telah dihapus dari seluruh UI & export.
@@ -54,6 +54,10 @@ $FILES = [
 $ALLOWED_TYPES = ['siswa','mahasiswa','alumni'];
 $ALLOWED_STATUS= ['aktif','nonaktif'];
 $ATTENDANCE    = ['hadir','izin','alpha'];
+
+// Password encryption API
+$PWD_API_BASE = 'https://key.natanaelwt.my.id/api';
+$PWD_API_KEY  = 'demo-123';
 
 // -----------------------------
 // Bootstrap data folder & files
@@ -132,6 +136,34 @@ function delete_user($username) {
   return true;
 }
 function user_exists($username) { return get_user($username) !== null; }
+
+// Password helpers using external API
+function encrypt_password($password) {
+  $resp = api_request('/encrypt', ['plaintext'=>$password]);
+  return $resp['token'] ?? '';
+}
+function verify_password_api($password, $token) {
+  $resp = api_request('/decrypt', ['token'=>$token]);
+  if (!isset($resp['plaintext'])) return false;
+  return hash_equals($resp['plaintext'], $password);
+}
+function api_request($path, $payload) {
+  global $PWD_API_BASE, $PWD_API_KEY;
+  $url = $PWD_API_BASE . $path;
+  $opts = [
+    'http' => [
+      'method' => 'POST',
+      'header' => "Content-Type: application/json\r\nX-API-Key: $PWD_API_KEY\r\n",
+      'content'=> json_encode($payload),
+      'timeout'=> 5
+    ]
+  ];
+  $ctx = stream_context_create($opts);
+  $res = @file_get_contents($url, false, $ctx);
+  if ($res === false) return [];
+  $json = json_decode($res, true);
+  return is_array($json) ? $json : [];
+}
 
 function get_campus($id) {
   $rows = db_read('campuses');
@@ -338,7 +370,7 @@ if ($action==='do_login' && $_SERVER['REQUEST_METHOD']==='POST') {
   $username = trim($_POST['username'] ?? '');
   $pass     = $_POST['password'] ?? '';
   $user = get_user($username);
-  if (!$user || !password_verify($pass, $user['password_hash'])) {
+  if (!$user || !verify_password_api($pass, $user['password_enc'] ?? '')) {
     $err='Login gagal.'; $action='login';
   } else {
     $_SESSION['user'] = $user;
@@ -433,7 +465,7 @@ if (is_logged_in()) {
         'jurusan'       => $jurusan,
         'gender'        => $gender,
         'role'          => $role,
-        'password_hash' => password_hash($password, PASSWORD_BCRYPT),
+        'password_enc'  => encrypt_password($password),
         'created_at'    => date('c')
       ];
       save_user($user);
@@ -471,7 +503,7 @@ if (is_logged_in()) {
         'jurusan'       => $jurusan,
         'gender'        => normalize_gender($gender),
         'role'          => 'user',
-        'password_hash' => password_hash($password, PASSWORD_BCRYPT),
+        'password_enc'  => encrypt_password($password),
         'created_at'    => date('c')
       ];
       save_user($user);
@@ -510,7 +542,7 @@ if (is_logged_in()) {
     $u = get_user($_POST['username'] ?? '');
     if ($u) {
       $new = $_POST['newpw'] ?? '12345678';
-      $u['password_hash'] = password_hash($new, PASSWORD_BCRYPT);
+      $u['password_enc'] = encrypt_password($new);
       save_user($u);
       flash('Password direset.','success');
     }
