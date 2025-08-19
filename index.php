@@ -103,6 +103,26 @@ function save_user($user) {
   if (!$found) $users[] = $user;
   db_save('users',$users);
 }
+function delete_user($username) {
+  $users = db_read('users');
+  $users = array_values(array_filter($users, fn($u)=>strcasecmp($u['username'] ?? '', $username)!==0));
+  db_save('users',$users);
+
+  $m = db_read('memberships');
+  $m = array_values(array_filter($m, fn($r)=>strcasecmp($r['username'] ?? '', $username)!==0));
+  db_save('memberships',$m);
+
+  $att = db_read('attendance');
+  $att = array_values(array_filter($att, fn($a)=>strcasecmp($a['username'] ?? '', $username)!==0));
+  db_save('attendance',$att);
+
+  $ktbs = db_read('ktb_groups');
+  $changed=false;
+  foreach ($ktbs as &$k) {
+    if (isset($k['leader']) && strcasecmp($k['leader'],$username)===0) { $k['leader']=''; $changed=true; }
+  }
+  if ($changed) db_save('ktb_groups',$ktbs);
+}
 function user_exists($username) { return get_user($username) !== null; }
 
 function get_campus($id) {
@@ -476,6 +496,17 @@ if (is_logged_in()) {
       $u['password_hash'] = password_hash($new, PASSWORD_BCRYPT);
       save_user($u);
       $msg='Password direset.';
+    }
+    header('Location:?action=users'); exit;
+  }
+
+  if ($action==='user_delete' && $_SERVER['REQUEST_METHOD']==='POST' && is_admin()) {
+    if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
+    $uname = $_POST['username'] ?? '';
+    if ($uname !== '') {
+      delete_user($uname);
+      if (isset($_SESSION['user']) && strcasecmp($_SESSION['user']['username'],$uname)===0) unset($_SESSION['user']);
+      $msg='Pengguna dihapus.';
     }
     header('Location:?action=users'); exit;
   }
@@ -1147,11 +1178,16 @@ if ($action==='users') {
               <div class="mt8">
                 <label>Password baru</label>
                 <input type="text" name="newpw" value="12345678" style="max-width:160px" placeholder="PW baru">
-                <button class="btn-ghost" title="Reset password" type="submit" formaction="?action=user_resetpw">Reset</button>
-              </div>
+              <button class="btn-ghost" title="Reset password" type="submit" formaction="?action=user_resetpw">Reset</button>
+            </div>
 
             </form>
           </details>
+          <form method="post" action="?action=user_delete" style="display:inline" onsubmit="return confirm(\'Hapus?\')">
+            <input type="hidden" name="csrf" value="'.e($csrf).'">
+            <input type="hidden" name="username" value="'.$unameSafe.'">
+            <button class="btn-danger" title="Hapus">Hapus</button>
+          </form>
         </td>
       </tr>';
     }
