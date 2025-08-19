@@ -318,7 +318,8 @@ reconcile_meetings();
 // -----------------------------
 // Auth: Login / Logout
 // -----------------------------
-$action = $_GET['action'] ?? 'dashboard';
+// Action can come from query string or POST (e.g., filter forms)
+$action = $_GET['action'] ?? ($_POST['action'] ?? 'dashboard');
 
 // HAPUS pendaftaran umum: tidak ada do_register / register
 if ($action==='do_login' && $_SERVER['REQUEST_METHOD']==='POST') {
@@ -970,6 +971,7 @@ if ($action==='analysis') {
 
   // Filter form
   echo '<div class="card"><h3>Filter</h3><form method="post" action="" class="filter-inline">';
+  echo '<input type="hidden" name="action" value="analysis">';
   echo '<div><label>Kampus</label><select name="campus_id"><option value="">-- Semua --</option>';
   foreach ($campuses as $c) {
     $sel = $campus_id === ($c['id'] ?? '') ? 'selected' : '';
