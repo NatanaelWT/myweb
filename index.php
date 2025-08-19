@@ -724,6 +724,50 @@ if (is_logged_in()) {
     }
     exit;
   }
+
+  // Update profil sendiri
+  if ($action==='my_profile_update' && $_SERVER['REQUEST_METHOD']==='POST') {
+    if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
+    $uname = current_user()['username'] ?? '';
+    $u = get_user($uname);
+    if ($u) {
+      $campus_id = trim($_POST['campus_id'] ?? ($u['campus_id'] ?? ''));
+      if ($campus_id !== '' && !get_campus($campus_id)) $campus_id = '';
+
+      $u['name']      = trim($_POST['name'] ?? ($u['name'] ?? ''));
+      $u['phone']     = trim($_POST['phone'] ?? ($u['phone'] ?? ''));
+      $u['campus_id'] = $campus_id;
+      $u['angkatan']  = normalize_angkatan($_POST['angkatan'] ?? ($u['angkatan'] ?? ''));
+      $u['jurusan']   = trim($_POST['jurusan'] ?? ($u['jurusan'] ?? ''));
+      $u['gender']    = normalize_gender($_POST['gender'] ?? ($u['gender'] ?? ''));
+
+      save_user($u);
+      $_SESSION['user'] = $u;
+      flash('Profil diperbarui.','success');
+    }
+    header('Location:?action=my'); exit;
+  }
+
+  // Update password sendiri
+  if ($action==='my_password_update' && $_SERVER['REQUEST_METHOD']==='POST') {
+    if (!csrf_ok($_POST['csrf'] ?? '')) die('CSRF invalid');
+    $uname = current_user()['username'] ?? '';
+    $u = get_user($uname);
+    $current = $_POST['current'] ?? '';
+    $new = $_POST['newpw'] ?? '';
+    $conf = $_POST['confpw'] ?? '';
+    if (!$u || !password_verify($current, $u['password_hash'])) {
+      flash('Password saat ini salah.','error');
+    } elseif ($new === '' || $new !== $conf) {
+      flash('Password baru tidak valid atau tidak cocok.','error');
+    } else {
+      $u['password_hash'] = password_hash($new, PASSWORD_BCRYPT);
+      save_user($u);
+      $_SESSION['user'] = $u;
+      flash('Password diperbarui.','success');
+    }
+    header('Location:?action=my'); exit;
+  }
 }
 
 // -----------------------------
@@ -1477,6 +1521,25 @@ if ($action==='my') {
   $users = db_read('users');
 
   echo '<div class="card"><h3>Profil</h3><div>Username: <b>'.e($u['username']).'</b> &nbsp; | &nbsp; Peran sistem: <span class="badge">'.e($u['role']).'</span></div>';
+  echo '<form method="post" action="?action=my_profile_update" class="mt8">';
+  echo '<input type="hidden" name="csrf" value="'.e($csrf).'">';
+  echo '<label>Nama Lengkap</label><input name="name" value="'.e($u['name'] ?? '').'">';
+  echo '<label>Telepon</label><input name="phone" value="'.e($u['phone'] ?? '').'">';
+  echo '<label>Kampus</label><select name="campus_id"><option value="">- pilih kampus -</option>';
+  foreach ($campuses as $c) echo '<option value="'.e($c['id']).'" '.((($u['campus_id'] ?? '')===$c['id'])?'selected':'').'>'.e($c['name']).'</option>';
+  echo '</select>';
+  echo '<label>Angkatan (YYYY)</label><input name="angkatan" value="'.e($u['angkatan'] ?? '').'">';
+  echo '<label>Jurusan</label><input name="jurusan" value="'.e($u['jurusan'] ?? '').'">';
+  echo '<label>Jenis Kelamin</label><select name="gender"><option value="">-</option><option value="L" '.((($u['gender'] ?? '')==='L')?'selected':'').'>L</option><option value="P" '.((($u['gender'] ?? '')==='P')?'selected':'').'>P</option></select>';
+  echo '<div class="mt8"><button class="btn-icon" title="Simpan Profil">Simpan Profil</button></div>';
+  echo '</form>';
+  echo '<form method="post" action="?action=my_password_update" class="mt16">';
+  echo '<input type="hidden" name="csrf" value="'.e($csrf).'">';
+  echo '<label>Password Saat Ini</label><input type="password" name="current" autocomplete="current-password" required>';
+  echo '<label>Password Baru</label><input type="password" name="newpw" autocomplete="new-password" required>';
+  echo '<label>Ulangi Password Baru</label><input type="password" name="confpw" autocomplete="new-password" required>';
+  echo '<div class="mt8"><button class="btn-icon" title="Ubah Password">Ubah Password</button></div>';
+  echo '</form>';
   echo '<div class="muted mt8">Aksi pengelolaan KTB dipusatkan di halaman ini.</div></div>';
 
   // KTB yang user terlibat
