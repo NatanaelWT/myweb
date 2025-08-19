@@ -806,7 +806,42 @@ function layout_header($title) {
   }
   echo '</nav></header><div class="container">';
 }
-function layout_footer(){ echo '</div></body></html>'; }
+function layout_footer(){
+  echo <<<'HTML'
+<script>
+document.addEventListener("submit", function(e){
+  var form = e.target;
+  if(form.tagName === "FORM"){
+    e.preventDefault();
+    var method = (form.method || "GET").toUpperCase();
+    var url = form.action || window.location.href;
+    var opts = { method: method };
+    if(method === "GET"){
+      var params = new URLSearchParams(new FormData(form));
+      url = url.split("?")[0] + (params.toString() ? "?"+params.toString() : "");
+    } else {
+      opts.body = new FormData(form);
+    }
+    fetch(url, opts).then(function(res){ return res.text(); }).then(function(html){
+      document.open(); document.write(html); document.close();
+      history.pushState(null, "", url);
+    });
+  }
+});
+document.addEventListener("click", function(e){
+  var a = e.target.closest("a");
+  if(a && a.getAttribute("href") && !a.getAttribute("target") && !a.getAttribute("href").startsWith("#")){
+    e.preventDefault();
+    var href = a.getAttribute("href");
+    fetch(href).then(function(res){ return res.text(); }).then(function(html){
+      document.open(); document.write(html); document.close();
+      history.pushState(null, "", href);
+    });
+  }
+});
+</script></div></body></html>
+HTML;
+}
 function flash_msg($msg) { if (!$msg) return; echo '<div class="card">'.e($msg).'</div>'; }
 
 // -----------------------------
