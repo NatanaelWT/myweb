@@ -985,8 +985,8 @@ if ($action==='analysis') {
   echo '</select></div>';
   echo '<div><label>Dari Tanggal</label><input type="date" name="start" value="'.e($start).'"></div>';
   echo '<div><label>Sampai Tanggal</label><input type="date" name="end" value="'.e($end).'"></div>';
-  echo '<div class="mt8"><button class="btn-icon" title="Terapkan">Terapkan</button></div>';
   echo '</form></div>';
+  echo '<script>document.querySelectorAll(".filter-inline input,.filter-inline select").forEach(el=>el.addEventListener("change",()=>el.form.submit()));</script>';
 
   echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
 
