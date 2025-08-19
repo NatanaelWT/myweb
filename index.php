@@ -734,8 +734,8 @@ function layout_header($title) {
   }
 
   .chart-row{display:flex;flex-wrap:wrap;gap:16px}
-  .chart-row .card{flex:1 1 300px}
-  @media(max-width:600px){.chart-row{flex-direction:column}}
+  .chart-row .card{flex:1 1 260px}
+  .chart-row canvas{max-width:100%;height:auto}
 
   /* Tabel responsive via wrapper */
   .table-wrap{width:100%;overflow-x:auto}
@@ -848,31 +848,14 @@ if ($action==='analysis') {
   $users    = db_read('users');
   $meetings     = db_read('meetings');
   $ktb          = db_read('ktb_groups');
-  $att          = db_read('attendance');
   $memberships  = db_read('memberships');
 
   // maps for quick lookup
-  $meetingMap = []; foreach ($meetings as $m) $meetingMap[$m['id']] = $m;
-  $ktbMap     = []; foreach ($ktb as $k) $ktbMap[$k['id']] = $k;
-  $userMap    = []; foreach ($users as $u) $userMap[strtolower($u['username'])] = $u;
+  $ktbMap  = []; foreach ($ktb as $k) $ktbMap[$k['id']] = $k;
+  $userMap = []; foreach ($users as $u) $userMap[strtolower($u['username'])] = $u;
 
   $angkatanOpts = array_unique(array_filter(array_map(fn($u)=>$u['angkatan'] ?? '', $users)));
   sort($angkatanOpts);
-
-  $counts = ['hadir'=>0,'izin'=>0,'alpha'=>0];
-  foreach ($att as $a) {
-    $meeting = $meetingMap[$a['meeting_id']] ?? null;
-    if (!$meeting) continue;
-    if ($start && $meeting['date'] < $start) continue;
-    if ($end && $meeting['date'] > $end) continue;
-    $kt = $ktbMap[$meeting['ktb_id']] ?? null;
-    if ($campus_id && (!$kt || ($kt['campus_id'] ?? '') !== $campus_id)) continue;
-    $user = $userMap[strtolower($a['username'])] ?? null;
-    if ($angkatan && (!$user || ($user['angkatan'] ?? '') !== $angkatan)) continue;
-    $st = $a['status'] ?? 'hadir';
-    if (!isset($counts[$st])) $counts[$st] = 0;
-    $counts[$st]++;
-  }
 
   $ktbCount = 0;
   foreach ($ktb as $k) {
@@ -915,6 +898,7 @@ if ($action==='analysis') {
     if (!isset($meetingCounts[$name])) $meetingCounts[$name] = 0;
     $meetingCounts[$name]++;
   }
+  $meetingTotal = array_sum($meetingCounts);
 
   // Filter form
   echo '<div class="card"><h3>Filter</h3><form method="get" action="" class="filter-inline">';
@@ -939,20 +923,20 @@ if ($action==='analysis') {
   echo '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
 
   echo '<div class="chart-row">';
+
   echo '<div class="card"><h3>Statistik KTB</h3>';
-  $total = array_sum($counts);
-  $sumAll = $ktbCount + $leaderCount + $memberCount + $total;
+  $sumAll = $ktbCount + $leaderCount + $memberCount + $meetingTotal;
   if ($sumAll === 0) {
     echo '<div class="muted">Belum ada data untuk filter ini.</div>';
   } else {
-    echo '<canvas id="chartKTB" width="400" height="300"></canvas>';
+    echo '<canvas id="chartKTB" width="300" height="220"></canvas>';
     echo '<ul>';
     echo '<li>Jumlah KTB: '.e($ktbCount).'</li>';
     echo '<li>Jumlah Pemimpin: '.e($leaderCount).'</li>';
     echo '<li>Jumlah Adek: '.e($memberCount).'</li>';
-    echo '<li>Jumlah Kehadiran: '.e($total).'</li>';
+    echo '<li>Jumlah Pertemuan: '.e($meetingTotal).'</li>';
     echo '</ul>';
-    echo '<script>const ctxK=document.getElementById("chartKTB").getContext("2d");new Chart(ctxK,{type:"bar",data:{labels:["KTB","Pemimpin","Adek","Kehadiran"],datasets:[{data:['.$ktbCount.','.$leaderCount.','.$memberCount.','.$total.'],backgroundColor:["#2196f3","#9c27b0","#ffc107","#4caf50"]}]},options:{plugins:{legend:{display:false}}}});</script>';
+    echo '<script>const ctxK=document.getElementById("chartKTB").getContext("2d");new Chart(ctxK,{type:"bar",data:{labels:["KTB","Pemimpin","Adek","Pertemuan"],datasets:[{data:['.$ktbCount.','.$leaderCount.','.$memberCount.','.$meetingTotal.'],backgroundColor:["#2196f3","#9c27b0","#ffc107","#4caf50"]}]},options:{plugins:{legend:{display:false}}}});</script>';
   }
   echo '</div>';
 
@@ -965,7 +949,7 @@ if ($action==='analysis') {
     $colors = [];
     $countLabels = count($labels);
     for ($i=0;$i<$countLabels;$i++) $colors[] = 'hsl('.(360*$i/$countLabels).',70%,60%)';
-    echo '<canvas id="chartMeeting" width="400" height="300"></canvas>';
+    echo '<canvas id="chartMeeting" width="300" height="220"></canvas>';
     echo '<ul>';
     foreach ($meetingCounts as $k=>$v) echo '<li>'.e($k).': '.e($v).'</li>';
     echo '</ul>';
